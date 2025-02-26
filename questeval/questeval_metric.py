@@ -627,7 +627,7 @@ class QuestEval:
             if answer_type == 'NER':
                 list_answers = [[a.text for a in self.spacy_pipeline(text).ents] for text in texts]
             elif answer_type == 'NOUN':
-                list_answers = [[a.text for a in self.spacy_pipeline(text).noun_chunks] for text in texts]
+                list_answers = [[a.text for a in get_noun_chunks(self.spacy_pipeline(text))] for text in texts]
             elif answer_type == 'SPANER':
                 pass  # todo not implemented
             elif answer_type == 'TABLE':
