@@ -5,6 +5,7 @@ import numpy as np
 import logging
 from datasets import load_metric
 import spacy
+import spacy_udpipe
 import torch
 from questeval import DIR, __version__
 from questeval.utils import (
@@ -17,6 +18,13 @@ from questeval.utils import (
 )
 
 HF_ORGANIZATION = "ThomasNLG"
+
+def load_spacy_model(language):
+    if language == "sl":
+        logging.info("Loading slovenian from spacy_udpipe")
+        spacy_udpipe.download("sl")
+        return spacy_udpipe.load("sl")
+    return spacy.load(language)
 
 class QuestEval:
     def __init__(
@@ -116,9 +124,10 @@ class QuestEval:
 
         elif language == 'sl':
             try:
-                self.spacy_pipeline = spacy.load('sl_core_news_sm')
+                logging.info("Attempting to load SLovenian language from spacy_udpipe")
+                self.spacy_pipeline = load_spacy_model(language)
             except OSError:
-                logging.warning("Downloading language model for the spaCy model.")
+                logging.warning("Downloading Slovenian language model for the spaCy model.")
                 from spacy.cli import download
                 download('sl_core_news_sm')
                 self.spacy_pipeline = spacy.load('sl_core_news_sm')
@@ -146,7 +155,7 @@ class QuestEval:
         elif self.language == 'sl':
             # Use multilingual models as a fallback
             models['hyp']['QA'] = "google/mt5-small"  # Replace with a better multilingual QA model
-            models['hyp']['QG'] = "facebook/mbart-large-50"  # Replace with multilingual QG model
+            models['hyp']['QG'] = "google/mt5-small"  # Replace with multilingual QG model
         else:
             raise("Multilingual evaluation not handled yet.")
 
