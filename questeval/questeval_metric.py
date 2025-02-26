@@ -65,7 +65,7 @@ class QuestEval:
                         }
                 }
         """
-        self.AVAILABLE_LANGUAGES = ("en",)  # todo: "multi"
+        self.AVAILABLE_LANGUAGES = ("en", "sl")  # todo: "multi"
         self.AVAILABLE_TASKS = ("text2text", "summarization", "text_simplification", "data2text")
 
         if task not in self.AVAILABLE_TASKS:
@@ -114,6 +114,15 @@ class QuestEval:
                 download('en_core_web_sm')
                 self.spacy_pipeline = spacy.load('en_core_web_sm')
 
+        elif language == 'sl':
+            try:
+                self.spacy_pipeline = spacy.load('sl_core_news_sm')
+            except OSError:
+                logging.warning("Downloading language model for the spaCy model.")
+                from spacy.cli import download
+                download('sl_core_news_sm')
+                self.spacy_pipeline = spacy.load('sl_core_news_sm')
+
         if self.src_preproc_pipe is None:
             if task == 'data2text':
                 """
@@ -134,6 +143,10 @@ class QuestEval:
         if self.language == 'en':
             models['hyp']['QA'] = f'{HF_ORGANIZATION}/t5-qa_squad2neg-en'
             models['hyp']['QG'] = f'{HF_ORGANIZATION}/t5-qg_squad1-en'
+        elif self.language == 'sl':
+            # Use multilingual models as a fallback
+            models['hyp']['QA'] = "google/mt5-small"  # Replace with a better multilingual QA model
+            models['hyp']['QG'] = "facebook/mbart-large-50"  # Replace with multilingual QG model
         else:
             raise("Multilingual evaluation not handled yet.")
 
