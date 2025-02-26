@@ -26,6 +26,27 @@ def load_spacy_model(language):
         return spacy_udpipe.load("sl")
     return spacy.load(language)
 
+
+def get_noun_chunks(doc):
+    """
+    Manually extracts noun chunks for Slovenian using POS tagging and dependency parsing.
+    """
+    noun_chunks = []
+
+    for token in doc:
+        if token.pos_ in ["NOUN", "PROPN"]:  # Targeting nouns and proper nouns
+            chunk = token.text
+
+            # Include adjectives or determiners before the noun
+            for left in token.lefts:
+                if left.pos_ in ["ADJ", "DET", "NUM"]:
+                    chunk = left.text + " " + chunk
+
+            noun_chunks.append(chunk)
+
+    return noun_chunks
+
+
 class QuestEval:
     def __init__(
         self,
@@ -589,17 +610,30 @@ class QuestEval:
             list_sentences = [sentencize(text, self.spacy_pipeline) for text in texts]
             texts = [' '.join(sentences[:self.limit_sent]) for sentences in list_sentences]
 
-        list_answers = []
-        if answer_type == 'NER':
-            list_answers = [[a.text for a in self.spacy_pipeline(text).ents] for text in texts]
-        elif answer_type == 'NOUN':
-            list_answers = [[a.text for a in self.spacy_pipeline(text).noun_chunks] for text in texts]
-        elif answer_type == 'SPANER':
-            pass  # todo not implemented
-        elif answer_type == 'TABLE':
-            list_answers = [extract_table_answers(text) for text in texts]
+        if self.language == "en":
+            list_answers = []
+            if answer_type == 'NER':
+                list_answers = [[a.text for a in self.spacy_pipeline(text).ents] for text in texts]
+            elif answer_type == 'NOUN':
+                list_answers = [[a.text for a in self.spacy_pipeline(text).noun_chunks] for text in texts]
+            elif answer_type == 'SPANER':
+                pass  # todo not implemented
+            elif answer_type == 'TABLE':
+                list_answers = [extract_table_answers(text) for text in texts]
 
-        return list_answers
+            return list_answers
+        elif self.language == "sl":
+            list_answers = []
+            if answer_type == 'NER':
+                list_answers = [[a.text for a in self.spacy_pipeline(text).ents] for text in texts]
+            elif answer_type == 'NOUN':
+                list_answers = [[a.text for a in self.spacy_pipeline(text).noun_chunks] for text in texts]
+            elif answer_type == 'SPANER':
+                pass  # todo not implemented
+            elif answer_type == 'TABLE':
+                list_answers = [extract_table_answers(text) for text in texts]
+
+            return list_answers
 
     def _predict_questions(
         self,
