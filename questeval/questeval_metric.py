@@ -7,6 +7,7 @@ from datasets import load_metric
 import spacy
 import spacy_udpipe
 import torch
+import itertools
 from questeval import DIR, __version__
 from questeval.utils import (
     API_T2T,
@@ -46,6 +47,32 @@ def get_noun_chunks(doc):
 
     return noun_chunks
 
+def get_named_entities(doc):
+    """
+    Manually extracts named entities for Slovenian using POS tagging and dependency parsing.
+    """
+    named_entities = []
+    entity = []
+    entity_label = None
+
+    for token in doc:
+        # Check if the token is a proper noun (PROPN) or noun (NOUN)
+        if token.pos_ in ["PROPN", "NOUN"]:
+            if not entity:  # Start a new entity
+                entity_label = "ORG" if token.dep_ == "nsubj" else "MISC"  # Approximate categories
+            entity.append(token.text)
+        else:
+            if entity:  # If we have collected an entity, store it
+                named_entities.append(" ".join(entity))
+                entity = []
+                entity_label = None
+
+    # Capture any remaining entity at the end of the loop
+    if entity:
+        named_entities.append(" ".join(entity))
+
+    print("DEBUG - Extracted named entities:", named_entities)  # Debugging
+    return named_entities
 
 class QuestEval:
     def __init__(
@@ -175,8 +202,8 @@ class QuestEval:
             models['hyp']['QG'] = f'{HF_ORGANIZATION}/t5-qg_squad1-en'
         elif self.language == 'sl':
             # Use multilingual models as a fallback
-            models['hyp']['QA'] = "google/mt5-small"  # Replace with a better multilingual QA model
-            models['hyp']['QG'] = "google/mt5-small"  # Replace with multilingual QG model
+            models['hyp']['QA'] = "VukDju/slo-t5-qa"  # Replace with a better multilingual QA model
+            models['hyp']['QG'] = "VukDju/slo-t5-qg"  # Replace with multilingual QG model
         else:
             raise("Multilingual evaluation not handled yet.")
 
@@ -625,7 +652,7 @@ class QuestEval:
         elif self.language == "sl":
             list_answers = []
             if answer_type == 'NER':
-                list_answers = [[a for a in self.spacy_pipeline(text).ents] for text in texts]
+                list_answers = [[a for a in get_named_entities(self.spacy_pipeline(text))] for text in texts]
             elif answer_type == 'NOUN':
                 list_answers = [[a for a in get_noun_chunks(self.spacy_pipeline(text))] for text in texts]
             elif answer_type == 'SPANER':
