@@ -11,6 +11,7 @@ import itertools
 from questeval import DIR, __version__
 from questeval.utils import (
     API_T2T,
+    API_OPT,
     sentencize,
     calculate_f1_squad,
     calculate_BERTScore,
@@ -202,8 +203,8 @@ class QuestEval:
             models['hyp']['QG'] = f'{HF_ORGANIZATION}/t5-qg_squad1-en'
         elif self.language == 'sl':
             # Use multilingual models as a fallback
-            models['hyp']['QA'] = "VukDju/slo-t5-qa"  # Replace with a better multilingual QA model
-            models['hyp']['QG'] = "VukDju/slo-t5-qg"  # Replace with multilingual QG model
+            models['hyp']['QA'] = "cjvt/GaMS-1B"  # Replace with a better multilingual QA model
+            models['hyp']['QG'] = "cjvt/GaMS-1B"  # Replace with multilingual QG model
         else:
             raise("Multilingual evaluation not handled yet.")
 
@@ -813,6 +814,23 @@ class QuestEval:
                 model_batch_size=model_batch_size,
                 device=self.device
             )
+        elif  "cjvt/gams-1b" in model_name.lower():
+            # Handle GaMS-1B (OPT-based) for Slovene
+            # You may or may not need keep_score_idx for this model.
+            # If not needed, you can remove or leave it as None.
+
+            # Decide batch size logic if you have a separate QG vs classification scenario
+            model_batch_size = self.qg_batch_size if "qg" in model_name.lower() else self.clf_batch_size
+
+            # Replace API_OPT with whatever wrapper you implement for an OPT-like model
+            model = API_OPT(
+                pretrained_model_name_or_path=model_name,
+                keep_score_idx=keep_score_idx,
+                max_source_length=512,
+                model_batch_size=model_batch_size,
+                device=self.device
+            )
+            return model
 
         else:
             raise NotImplementedError(f'Model Name Not Handled: the model name should contain t5 ({model_name}).')
