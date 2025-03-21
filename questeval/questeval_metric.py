@@ -154,6 +154,7 @@ class QuestEval:
         self.qg_batch_size = qg_batch_size
         self.clf_batch_size = clf_batch_size
         self.device = 'cuda' if (torch.cuda.is_available() and not no_cuda) else 'cpu'
+        print('<<-------- DEVICE: ' + self.device)
 
         self.reduction_multi_refs = reduction_multi_refs
         self.do_consistency = do_consistency
