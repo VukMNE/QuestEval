@@ -285,6 +285,7 @@ class QuestEval:
         list_references: List[List[str]] = None,
     ) -> List[float]:
 
+        print('Started batch questeval')
         list_compared_logs = []
         d_loaded_logs = dict()
 
@@ -477,6 +478,8 @@ class QuestEval:
                 question = question_texts[i]
                 logs[idx]['self'][answer_type][name_model_qg]['questions'].append(question)
 
+        print("Question_Texts:")
+        print(question_texts)
         return len(to_do_exs) != 0
 
     def _compute_question_answering(
