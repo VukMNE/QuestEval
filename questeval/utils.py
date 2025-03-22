@@ -96,7 +96,7 @@ class API_T2T:
                 source_ids, source_mask = inputs["input_ids"], inputs["attention_mask"]
                 dict_generated_ids = self.model.generate(
                     input_ids=source_ids.to(self.model.device),
-                    max_new_tokens=512,
+                    max_new_tokens=20,
                     attention_mask=source_mask.to(self.model.device),
                     use_cache=True,
                     decoder_start_token_id=None,
@@ -187,7 +187,7 @@ class API_OPT:
                 # 'scores' in the returned dict will contain the logits for each generated token.
                 dict_generated_ids = self.model.generate(
                     input_ids=source_ids,
-                    max_new_tokens=512,
+                    max_new_tokens=20,
                     attention_mask=source_mask,
                     use_cache=True,
                     decoder_start_token_id=None,
