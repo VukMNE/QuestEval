@@ -507,6 +507,8 @@ class QuestEval:
                 continue
             for answer_type in self._get_answer_types(type_logs_2):
                 questions = log_2['self'][answer_type][name_model_qg]['questions']
+                print('### Questions:')
+                print(questions)
                 gold_answers = log_2['self'][answer_type]['answers']
                 assert len(questions) == len(gold_answers)
                 for question, gold_answer in zip(questions, gold_answers):
