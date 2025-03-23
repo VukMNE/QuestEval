@@ -145,8 +145,7 @@ class API_OPT:
 
         self.model = AutoModelForCausalLM.from_pretrained(
             pretrained_model_name_or_path=pretrained_model_name_or_path,
-            trust_remote_code=True,
-            use_safetensors=True
+            trust_remote_code=True
         )
 
         self.keep_score_idx = keep_score_idx
