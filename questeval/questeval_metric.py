@@ -821,7 +821,7 @@ class QuestEval:
                 model_batch_size=model_batch_size,
                 device=self.device
             )
-        elif  "cjvt/gams-1b" in model_name.lower():
+        elif  "vukdju/gams-1b" in model_name.lower():
             # Handle GaMS-1B (OPT-based) for Slovene
             # You may or may not need keep_score_idx for this model.
             # If not needed, you can remove or leave it as None.
