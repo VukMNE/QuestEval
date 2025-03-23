@@ -469,7 +469,6 @@ class QuestEval:
             for answer_type in self._get_answer_types(type_logs):
                 if name_model_qg not in log['self'][answer_type]:
                     log['self'][answer_type][name_model_qg] = {'questions': []}
-
                     to_do_exs += [(a, log['text']) for a in log['self'][answer_type]['answers']]
                     to_do_exs_idxs += [idx] * len(log['self'][answer_type]['answers'])
                     to_do_exs_types += [answer_type] * len(log['self'][answer_type]['answers'])
@@ -680,7 +679,10 @@ class QuestEval:
         model_QG = self.models[type_logs]['QG']
 
         str_prefix = f'{self.qg_prefix} {self.sep} ' if self.qg_prefix is not None else ''
-        formated_inputs = [f'{str_prefix}{asw} {self.sep} {context}' for asw, context in to_do_exs]
+        if self.language == 'sl':
+            formated_inputs = [f"kontekst: {context} odgovor: {asw} vprašanje:" for asw, context in to_do_exs]
+        else:
+            formated_inputs = [f'{str_prefix}{asw} {self.sep} {context}' for asw, context in to_do_exs]
         _, question_texts = model_QG.predict(formated_inputs)
 
         return question_texts
@@ -824,6 +826,17 @@ class QuestEval:
                 device=self.device
             )
         elif  "vukdju/gams-1b" in model_name.lower():
+
+            if "qa" in model_name.lower():
+                # 73 is the index for the token unanswerable in T5 vocabulary
+                keep_score_idx = 73
+            if 'weighter' in model_name.lower():
+                # 1176 is the index for the token true in T5 vocabulary
+                keep_score_idx = 1176
+            if model_name == f"{HF_ORGANIZATION}/t5-qg_squad1-en":
+                # the default models were trained with this prefix 'sv1' and 'nqa' prefix on the two datasets
+                self.qg_prefix = 'sv1'
+
             # Handle GaMS-1B (OPT-based) for Slovene
             # You may or may not need keep_score_idx for this model.
             # If not needed, you can remove or leave it as None.
