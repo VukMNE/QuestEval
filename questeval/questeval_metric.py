@@ -207,8 +207,8 @@ class QuestEval:
             models['hyp']['QG'] = f'{HF_ORGANIZATION}/t5-qg_squad1-en'
         elif self.language == 'sl':
             # Use multilingual models as a fallback
-            models['hyp']['QA'] = "cjvt/GaMS-1B"  # Replace with a better multilingual QA model
-            models['hyp']['QG'] = "cjvt/GaMS-1B"  # Replace with multilingual QG model
+            models['hyp']['QA'] = "VukDju/GaMS-1B-QA"  # Replace with a better multilingual QA model
+            models['hyp']['QG'] = "VukDju/GaMS-1B-QG"  # Replace with multilingual QG model
         else:
             raise("Multilingual evaluation not handled yet.")
 
