@@ -158,75 +158,67 @@ class API_OPT:
         self.model_batch_size = model_batch_size
 
     def predict(
-        self,
-        sources: List[str],
+            self,
+            sources: List[str],
     ):
-        """
-        Mirrors the predict(...) method from API_T2T.
-        Returns (keep_score_idx_scores, gen_texts).
-        """
         gen_texts = []
         keep_score_idx_scores = []
 
         for i in range(0, len(sources), self.model_batch_size):
-            batch_sources = sources[i : i + self.model_batch_size]
+            batch_sources = sources[i: i + self.model_batch_size]
             inputs = self.tokenizer(
                 batch_sources,
                 max_length=self.max_source_length,
                 padding="max_length",
                 truncation=True,
                 return_tensors="pt",
-                verbose=False
             )
 
             source_ids = inputs["input_ids"].to(self.model.device)
             source_mask = inputs["attention_mask"].to(self.model.device)
 
             with torch.no_grad():
-                # 'scores' in the returned dict will contain the logits for each generated token.
                 dict_generated_ids = self.model.generate(
                     input_ids=source_ids,
-                    max_new_tokens=20,
+                    max_new_tokens=64,  # ⬅️ Give it enough room to generate
                     attention_mask=source_mask,
                     use_cache=True,
                     decoder_start_token_id=None,
-                    num_beams=1,
+                    num_beams=4,
                     num_return_sequences=1,
                     do_sample=False,
                     output_scores=True,
                     return_dict_in_generate=True
                 )
 
-            # Decode the generated sequences
-            batch_gen_texts = self.tokenizer.batch_decode(
+            decoded = self.tokenizer.batch_decode(
                 dict_generated_ids["sequences"],
                 skip_special_tokens=True,
                 clean_up_tokenization_spaces=True
             )
-            gen_texts += batch_gen_texts
 
-            # Calculate keep_score_idx in the same manner as T5:
-            # dict_generated_ids["scores"][0] => logits for the first generated token in each sequence.
-            # We then softmax, extract the probability of `keep_score_idx`, and do (1 - p).
-            # This logic is the same as in API_T2T, but note that with causal LMs,
-            # the 'scores' dimension should match the # of generated tokens.
+            # 🔥 Strip prompt from generation
+            clean_texts = []
+            for full_gen, prompt in zip(decoded, batch_sources):
+                if full_gen.startswith(prompt):
+                    clean = full_gen[len(prompt):].strip()
+                else:
+                    clean = full_gen.strip()
+                clean_texts.append(clean)
+
+            gen_texts += clean_texts
+
             if dict_generated_ids["scores"]:
-                first_token_scores = dict_generated_ids["scores"][0]  # [batch_size, vocab_size]
+                first_token_scores = dict_generated_ids["scores"][0]
                 first_token_probs = first_token_scores.softmax(dim=-1)
-                keep_prob = first_token_probs[:, self.keep_score_idx]  # Probability of keep_score_idx
+                keep_prob = first_token_probs[:, self.keep_score_idx]
                 keep_score_idx_score = (1 - keep_prob)
-
-                # If there's more than one example in the batch, you might handle shape differences
-                if len(batch_gen_texts) != 1:
-                    keep_score_idx_score = keep_score_idx_score.squeeze()
-
-                keep_score_idx_scores += keep_score_idx_score.tolist()
+                keep_score_idx_scores += keep_score_idx_score.squeeze().tolist()
             else:
-                # If for some reason no scores are returned (e.g. max_new_tokens=0),
-                # we can store default or zero. This is a fallback.
-                keep_score_idx_scores += [0.0] * len(batch_gen_texts)
+                keep_score_idx_scores += [0.0] * len(clean_texts)
 
         return keep_score_idx_scores, gen_texts
+
 
 def calculate_f1_squad(
     a_gold: str,
