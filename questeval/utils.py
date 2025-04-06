@@ -161,61 +161,71 @@ class API_OPT:
             self,
             sources: List[str],
     ):
+        """
+        Mirrors the predict(...) method from API_T2T.
+        Returns (keep_score_idx_scores, gen_texts).
+        """
         gen_texts = []
         keep_score_idx_scores = []
 
         for i in range(0, len(sources), self.model_batch_size):
             batch_sources = sources[i: i + self.model_batch_size]
+
+            # Tokenize inputs
             inputs = self.tokenizer(
                 batch_sources,
                 max_length=self.max_source_length,
                 padding="max_length",
                 truncation=True,
-                return_tensors="pt",
+                return_tensors="pt"
             )
-
             source_ids = inputs["input_ids"].to(self.model.device)
             source_mask = inputs["attention_mask"].to(self.model.device)
 
             with torch.no_grad():
-                dict_generated_ids = self.model.generate(
+                generated = self.model.generate(
                     input_ids=source_ids,
-                    max_new_tokens=64,  # ⬅️ Give it enough room to generate
                     attention_mask=source_mask,
+                    max_new_tokens=64,  # Focus only on generation part
                     use_cache=True,
                     decoder_start_token_id=None,
-                    num_beams=4,
+                    num_beams=1,
                     num_return_sequences=1,
                     do_sample=False,
                     output_scores=True,
                     return_dict_in_generate=True
                 )
 
-            decoded = self.tokenizer.batch_decode(
-                dict_generated_ids["sequences"],
+            # Decode in batch
+            decoded_outputs = self.tokenizer.batch_decode(
+                generated["sequences"],
                 skip_special_tokens=True,
                 clean_up_tokenization_spaces=True
             )
 
-            # 🔥 Strip prompt from generation
-            clean_texts = []
-            for full_gen, prompt in zip(decoded, batch_sources):
-                if full_gen.startswith(prompt):
-                    clean = full_gen[len(prompt):].strip()
+            # Remove prompt part if generated output starts with it
+            stripped_outputs = []
+            for full_output, prompt in zip(decoded_outputs, batch_sources):
+                if full_output.startswith(prompt):
+                    stripped_outputs.append(full_output[len(prompt):].strip())
                 else:
-                    clean = full_gen.strip()
-                clean_texts.append(clean)
+                    stripped_outputs.append(full_output.strip())  # fallback
 
-            gen_texts += clean_texts
+            gen_texts.extend(stripped_outputs)
 
-            if dict_generated_ids["scores"]:
-                first_token_scores = dict_generated_ids["scores"][0]
+            # Get scores for keep_score_idx (like T5 logic)
+            if generated["scores"]:
+                first_token_scores = generated["scores"][0]
                 first_token_probs = first_token_scores.softmax(dim=-1)
                 keep_prob = first_token_probs[:, self.keep_score_idx]
                 keep_score_idx_score = (1 - keep_prob)
-                keep_score_idx_scores += keep_score_idx_score.squeeze().tolist()
+
+                if len(stripped_outputs) != 1:
+                    keep_score_idx_score = keep_score_idx_score.squeeze()
+
+                keep_score_idx_scores += keep_score_idx_score.tolist()
             else:
-                keep_score_idx_scores += [0.0] * len(clean_texts)
+                keep_score_idx_scores += [0.0] * len(stripped_outputs)
 
         return keep_score_idx_scores, gen_texts
 
