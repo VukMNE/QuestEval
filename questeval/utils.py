@@ -181,7 +181,8 @@ class API_OPT:
                     input_ids=input_ids,
                     attention_mask=attention_mask,
                     max_new_tokens=64,
-                    eos_token_id=self.tokenizer.convert_tokens_to_ids("[END]"),
+                    eos_token_id=self.tokenizer.eos_token_id,
+                    pad_token_id=self.tokenizer.pad_token_id,
                     use_cache=True,
                     num_beams=1,
                     do_sample=True,  # Enable sampling
