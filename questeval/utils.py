@@ -129,14 +129,13 @@ class API_OPT:
         pretrained_model_name_or_path: str,
         max_source_length: int,
         model_batch_size: int,
-        keep_score_idx: int,  # Will be used similarly to how T5 does it.
+        keep_score_idx: int,
         device: str = "cuda"
     ) -> None:
         """
-        A minimal wrapper for OPT-based models (cjvt/GaMS-1B, etc.), mirroring API_T2T.
+        A minimal wrapper for OPT-based models (cjvt/GaMS-1B, etc.), updated with generation best practices.
         """
         self.pretrained_model_name_or_path = pretrained_model_name_or_path
-
 
         self.tokenizer = AutoTokenizer.from_pretrained(
             pretrained_model_name_or_path=pretrained_model_name_or_path,
@@ -150,20 +149,15 @@ class API_OPT:
 
         self.keep_score_idx = keep_score_idx
 
-        # Send model to the correct device
         if device == "cuda":
             self.model.cuda()
 
         self.max_source_length = max_source_length
         self.model_batch_size = model_batch_size
 
-    def predict(
-            self,
-            sources: List[str],
-    ):
+    def predict(self, sources: List[str]):
         """
-        Mirrors the predict(...) method from API_T2T.
-        Returns (keep_score_idx_scores, gen_texts).
+        Predicts questions from prompts. Returns (keep_score_idx_scores, generated_questions).
         """
         gen_texts = []
         keep_score_idx_scores = []
@@ -171,7 +165,6 @@ class API_OPT:
         for i in range(0, len(sources), self.model_batch_size):
             batch_sources = sources[i: i + self.model_batch_size]
 
-            # Tokenize inputs
             inputs = self.tokenizer(
                 batch_sources,
                 max_length=self.max_source_length,
@@ -179,41 +172,52 @@ class API_OPT:
                 truncation=True,
                 return_tensors="pt"
             )
-            source_ids = inputs["input_ids"].to(self.model.device)
-            source_mask = inputs["attention_mask"].to(self.model.device)
+
+            input_ids = inputs["input_ids"].to(self.model.device)
+            attention_mask = inputs["attention_mask"].to(self.model.device)
+
+            eos_token_id = self.tokenizer.convert_tokens_to_ids("[END]")
+
+            self.tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+            self.model.resize_token_embeddings(len(self.tokenizer))  # if you add tokens after model is loaded
 
             with torch.no_grad():
                 generated = self.model.generate(
-                    input_ids=source_ids,
-                    attention_mask=source_mask,
-                    max_new_tokens=64,  # Focus only on generation part
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    max_new_tokens=64,
+                    eos_token_id=self.tokenizer.convert_tokens_to_ids("[END]"),
+                    pad_token_id=self.tokenizer.convert_tokens_to_ids("[PAD]"),
                     use_cache=True,
-                    decoder_start_token_id=None,
                     num_beams=1,
-                    num_return_sequences=1,
-                    do_sample=False,
+                    do_sample=True,  # Enable sampling
+                    temperature=0.9,
+                    top_p=0.95,
+                    repetition_penalty=1.5,
+                    no_repeat_ngram_size=4,
                     output_scores=True,
                     return_dict_in_generate=True
                 )
 
-            # Decode in batch
             decoded_outputs = self.tokenizer.batch_decode(
                 generated["sequences"],
                 skip_special_tokens=True,
                 clean_up_tokenization_spaces=True
             )
 
-            # Remove prompt part if generated output starts with it
+            # Strip the prompt if model repeats it in generation
             stripped_outputs = []
-            for full_output, prompt in zip(decoded_outputs, batch_sources):
-                if full_output.startswith(prompt):
-                    stripped_outputs.append(full_output[len(prompt):].strip())
+            for output, prompt in zip(decoded_outputs, batch_sources):
+                prompt = prompt.strip()
+                output = output.strip()
+                if output.startswith(prompt):
+                    stripped_outputs.append(output[len(prompt):].strip())
                 else:
-                    stripped_outputs.append(full_output.strip())  # fallback
+                    stripped_outputs.append(output)
 
             gen_texts.extend(stripped_outputs)
 
-            # Get scores for keep_score_idx (like T5 logic)
+            # Compute score for keep_score_idx
             if generated["scores"]:
                 first_token_scores = generated["scores"][0]
                 first_token_probs = first_token_scores.softmax(dim=-1)
