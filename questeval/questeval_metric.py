@@ -680,7 +680,7 @@ class QuestEval:
 
         str_prefix = f'{self.qg_prefix} {self.sep} ' if self.qg_prefix is not None else ''
         if self.language == 'sl':
-            formated_inputs = [f"Na podlagi naslednjega besedila in odgovora, sestavi samo eno vprašanje in se končaj z </s>.\nBesedilo: {context}\nOdgovor: {asw}\nVprašanje:" for asw, context in to_do_exs]
+            formated_inputs = [f"Na podlagi naslednjega besedila in odgovora, sestavi samo eno vprašanje in se končaj z [END].\nBesedilo: {context}\nOdgovor: {asw}\nVprašanje:" for asw, context in to_do_exs]
         else:
             formated_inputs = [f'{str_prefix}{asw} {self.sep} {context}' for asw, context in to_do_exs]
         _, question_texts = model_QG.predict(formated_inputs)

@@ -176,13 +176,12 @@ class API_OPT:
             input_ids = inputs["input_ids"].to(self.model.device)
             attention_mask = inputs["attention_mask"].to(self.model.device)
 
-
             with torch.no_grad():
                 generated = self.model.generate(
                     input_ids=input_ids,
                     attention_mask=attention_mask,
                     max_new_tokens=64,
-                    eos_token_id=self.tokenizer.eos_token_id,
+                    eos_token_id=self.tokenizer.convert_tokens_to_ids("[END]"),
                     pad_token_id=self.tokenizer.pad_token_id,
                     use_cache=True,
                     num_beams=1,
