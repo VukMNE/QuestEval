@@ -167,9 +167,8 @@ class API_OPT:
 
             inputs = self.tokenizer(
                 batch_sources,
-                max_length=self.max_source_length,
-                padding="max_length",
-                truncation=True,
+                padding=True,
+                truncation=False,
                 return_tensors="pt"
             )
 
