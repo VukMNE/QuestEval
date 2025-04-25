@@ -714,6 +714,10 @@ class QuestEval:
             formated_inputs = [f'{question} {self.sep} {context}' for question, context in to_do_exs]
         qa_scores, qa_texts = model_QA.predict(formated_inputs)
 
+        if self.language == 'sl':
+            for i, a in enumerate(qa_texts):
+                if '[END]' in a:
+                    qa_texts[i] = a[:a.index('[END]')]
         return qa_scores, qa_texts
 
     def _predict_weighter(self, to_do_exs: List[str]) -> List[float]:
