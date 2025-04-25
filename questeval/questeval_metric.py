@@ -210,7 +210,7 @@ class QuestEval:
             models['hyp']['QA'] = "VukDju/GaMS-1B-QA"  # Replace with a better multilingual QA model
             models['hyp']['QG'] = "VukDju/GaMS-1B-QG"  # Replace with multilingual QG model
         else:
-            raise("Multilingual evaluation not handled yet.")
+            raise("Evaluation for languages other than English or Slovenian is not handled yet.")
 
         # (if) multimodal sources
         if self.task == "data2text":
