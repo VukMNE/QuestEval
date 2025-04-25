@@ -525,7 +525,8 @@ class QuestEval:
 
         if len(to_do_exs) != 0:
             answerability_scores, qa_texts = self._predict_answers(to_do_exs, type_logs_1)
-
+            print('#### QA answers: ')
+            print(qa_texts)
             assert len(to_do_exs) == len(qa_texts) == len(to_do_gold_asws) == len(answerability_scores)
             for i in range(len(to_do_exs)):
 
@@ -685,6 +686,10 @@ class QuestEval:
             formated_inputs = [f'{str_prefix}{asw} {self.sep} {context}' for asw, context in to_do_exs]
         _, question_texts = model_QG.predict(formated_inputs)
 
+        if self.language == 'sl':
+            for i, q in enumerate(question_texts):
+                question_texts[i] = q[:q.index('[END]')] # strip questions after the '[END]' token in slovene
+
         return question_texts
 
     def _predict_answers(
@@ -692,8 +697,18 @@ class QuestEval:
         to_do_exs: List[tuple],
         type_logs: str
     ) -> Tuple[List[float], List[str]]:
+
         model_QA = self.models[type_logs]['QA']
-        formated_inputs = [f'{question} {self.sep} {context}' for question, context in to_do_exs]
+        if self.language == 'sl':
+            formated_inputs = [(
+                "Na podlagi podanega vprašanja in besedila generiraj samo en smiseln in pravilen odgovor, "
+                "ki izhaja izključno iz konteksta tega besedila. "
+                "Odgovor naj bo jasen, natančen in kratek (le nekaj besed). "
+                "Če na vprašanje ni mogoče odgovoriti na podlagi predloženega besedila, ne ustvarite nobenega besedila."
+                f"\n\nVprašanje: {q}\nBesedilo: {c}\nOdgovor:"
+            ) for q, c in to_do_exs]
+        else:
+            formated_inputs = [f'{question} {self.sep} {context}' for question, context in to_do_exs]
         qa_scores, qa_texts = model_QA.predict(formated_inputs)
 
         return qa_scores, qa_texts
