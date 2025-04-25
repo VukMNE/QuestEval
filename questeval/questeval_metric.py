@@ -688,7 +688,10 @@ class QuestEval:
 
         if self.language == 'sl':
             for i, q in enumerate(question_texts):
-                question_texts[i] = q[:q.index('[END]')] # strip questions after the '[END]' token in slovene
+                if '[END]' in q:
+                    question_texts[i] = q[:q.index('[END]')]  # strip after [END] if slovenian language
+                else:
+                    question_texts[i] = q  # keep as is
 
         return question_texts
 
