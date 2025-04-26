@@ -525,14 +525,17 @@ class QuestEval:
 
         if len(to_do_exs) != 0:
             answerability_scores, qa_texts = self._predict_answers(to_do_exs, type_logs_1)
-            print('#### QA answers: ')
-            print(qa_texts)
+            # print('#### QA answers: ')
+            # print(qa_texts)
             assert len(to_do_exs) == len(qa_texts) == len(to_do_gold_asws) == len(answerability_scores)
             for i in range(len(to_do_exs)):
 
                 question = to_do_exs[i][0]
                 idx = to_do_exs_idxs[i]
                 assert to_do_exs[i][1] == logs_1[idx]['text']
+
+                print("Question asked: " + question)
+                print("Answer:" +  qa_texts[i])
 
                 if name_model_qa not in logs_1[idx]['asked'][question]:
                     logs_1[idx]['asked'][question][name_model_qa] = {'answer': qa_texts[i],
