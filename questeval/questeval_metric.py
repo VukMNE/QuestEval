@@ -18,7 +18,7 @@ from questeval.utils import (
     extract_table_answers,
     text2hash
 )
-from few_shot.sl.few_shot_qg import build_few_shot_prompt_examples
+from questeval.few_shot.sl.few_shot_qg import build_few_shot_prompt_examples
 
 HF_ORGANIZATION = "ThomasNLG"
 
