@@ -7,7 +7,6 @@ from datasets import load_metric
 import spacy
 import spacy_udpipe
 import torch
-import itertools
 from questeval import DIR, __version__
 from questeval.utils import (
     API_T2T,
@@ -18,7 +17,7 @@ from questeval.utils import (
     extract_table_answers,
     text2hash
 )
-from questeval.few_shot.sl.few_shot_qg import build_few_shot_prompt_examples
+from questeval.few_shot.few_shot_qg import build_few_shot_prompt_examples
 
 HF_ORGANIZATION = "ThomasNLG"
 
