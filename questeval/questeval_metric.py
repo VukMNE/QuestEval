@@ -18,6 +18,7 @@ from questeval.utils import (
     extract_table_answers,
     text2hash
 )
+from few_shot.sl.few_shot_qg import build_few_shot_prompt_examples
 
 HF_ORGANIZATION = "ThomasNLG"
 
@@ -684,7 +685,25 @@ class QuestEval:
 
         str_prefix = f'{self.qg_prefix} {self.sep} ' if self.qg_prefix is not None else ''
         if self.language == 'sl':
-            formated_inputs = [f"Na podlagi naslednjega besedila in podanega odgovora generiraj samo eno vprašanje, na katerega je ta podani odgovor pravilen in smiseln izključno v kontekstu tega besedila. Vprašanje naj bo oblikovano tako, da je prav podani odgovor (in ne katerikoli drug) edini pravilen odgovor. Zaključi vprašanje z oznako [END].\nBesedilo: {context}\nOdgovor: {asw}\nVprašanje:" for asw, context in to_do_exs]
+            # Build the full few-shot demonstration
+            prompt = (
+                'Spodaj so navedeni primeri, kako narediti vprašanje na podlagi besedila in odgovora. '
+                'Nato v istem slogu sestavi svoje vprašanje.\n\n'
+            )
+            prompt += build_few_shot_prompt_examples()  # append few-shot examples
+            prompt += (
+                '\nZdaj si na vrsti ti!\n'
+                'Na podlagi naslednjega besedila in podanega odgovora generiraj samo eno vprašanje, '
+                'na katerega je ta podani odgovor pravilen in smiseln izključno v kontekstu tega besedila. '
+                'Vprašanje naj bo oblikovano tako, da je prav podani odgovor (in ne katerikoli drug) edini pravilen odgovor. '
+                'Zaključi vprašanje z oznako [END].\n'
+            )
+
+            # Now create the actual inputs to predict — **each example extends the prompt**
+            formated_inputs = [
+                prompt + f"Besedilo: {context.replace(asw, '<ans>' + asw + '</ans>')}\nOdgovor: {asw}\nVprašanje:"
+                for asw, context in to_do_exs
+            ]
         else:
             formated_inputs = [f'{str_prefix}{asw} {self.sep} {context}' for asw, context in to_do_exs]
         _, question_texts = model_QG.predict(formated_inputs)
