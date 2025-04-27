@@ -684,14 +684,7 @@ class QuestEval:
 
         str_prefix = f'{self.qg_prefix} {self.sep} ' if self.qg_prefix is not None else ''
         if self.language == 'sl':
-            # Build the full few-shot demonstration
             prompt = (
-                'Spodaj so navedeni primeri, kako narediti vprašanje na podlagi besedila in odgovora. '
-                'Nato v istem slogu sestavi svoje vprašanje.\n\n'
-            )
-            prompt += build_few_shot_prompt_examples()  # append few-shot examples
-            prompt += (
-                '\nZdaj si na vrsti ti!\n'
                 'Na podlagi naslednjega besedila in podanega odgovora generiraj samo eno vprašanje, '
                 'na katerega je ta podani odgovor pravilen in smiseln izključno v kontekstu tega besedila. '
                 'Vprašanje naj bo oblikovano tako, da je prav podani odgovor (in ne katerikoli drug) edini pravilen odgovor. '
