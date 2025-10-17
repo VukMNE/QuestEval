@@ -167,9 +167,8 @@ class API_OPT:
 
             inputs = self.tokenizer(
                 batch_sources,
-                max_length=self.max_source_length,
-                padding="max_length",
-                truncation=True,
+                padding=True,
+                truncation=False,
                 return_tensors="pt"
             )
 
@@ -181,8 +180,8 @@ class API_OPT:
                     input_ids=input_ids,
                     attention_mask=attention_mask,
                     max_new_tokens=64,
-                    eos_token_id=self.tokenizer.eos_token_id,
-                    pad_token_id=self.tokenizer.pad_token_id,
+                    eos_token_id=self.tokenizer.convert_tokens_to_ids("[END]"),
+                    pad_token_id=self.tokenizer.convert_tokens_to_ids("[END]"),
                     use_cache=True,
                     num_beams=1,
                     do_sample=True,  # Enable sampling

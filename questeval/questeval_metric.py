@@ -7,7 +7,6 @@ from datasets import load_metric
 import spacy
 import spacy_udpipe
 import torch
-import itertools
 from questeval import DIR, __version__
 from questeval.utils import (
     API_T2T,
@@ -18,6 +17,7 @@ from questeval.utils import (
     extract_table_answers,
     text2hash
 )
+from questeval.few_shot.few_shot_qg import build_few_shot_prompt_examples
 
 HF_ORGANIZATION = "ThomasNLG"
 
@@ -210,7 +210,7 @@ class QuestEval:
             models['hyp']['QA'] = "VukDju/GaMS-1B-QA"  # Replace with a better multilingual QA model
             models['hyp']['QG'] = "VukDju/GaMS-1B-QG"  # Replace with multilingual QG model
         else:
-            raise("Multilingual evaluation not handled yet.")
+            raise("Evaluation for languages other than English or Slovenian is not handled yet.")
 
         # (if) multimodal sources
         if self.task == "data2text":
@@ -525,13 +525,17 @@ class QuestEval:
 
         if len(to_do_exs) != 0:
             answerability_scores, qa_texts = self._predict_answers(to_do_exs, type_logs_1)
-
+            # print('#### QA answers: ')
+            # print(qa_texts)
             assert len(to_do_exs) == len(qa_texts) == len(to_do_gold_asws) == len(answerability_scores)
             for i in range(len(to_do_exs)):
 
                 question = to_do_exs[i][0]
                 idx = to_do_exs_idxs[i]
                 assert to_do_exs[i][1] == logs_1[idx]['text']
+
+                print("Question asked: " + question)
+                print("Answer:" +  qa_texts[i])
 
                 if name_model_qa not in logs_1[idx]['asked'][question]:
                     logs_1[idx]['asked'][question][name_model_qa] = {'answer': qa_texts[i],
@@ -680,10 +684,28 @@ class QuestEval:
 
         str_prefix = f'{self.qg_prefix} {self.sep} ' if self.qg_prefix is not None else ''
         if self.language == 'sl':
-            formated_inputs = [f"Na podlagi spodnjega besedila in odgovora sestavi samo eno vprašanje in se končaj z </s>.\nBesedilo: {context}\nOdgovor: {asw}\nVprašanje:" for asw, context in to_do_exs]
+            prompt = (
+                'Na podlagi naslednjega besedila in podanega odgovora generiraj samo eno vprašanje, '
+                'na katerega je ta podani odgovor pravilen in smiseln izključno v kontekstu tega besedila. '
+                'Vprašanje naj bo oblikovano tako, da je prav podani odgovor (in ne katerikoli drug) edini pravilen odgovor. '
+                'Zaključi vprašanje z oznako [END].\n'
+            )
+
+            # Now create the actual inputs to predict — **each example extends the prompt**
+            formated_inputs = [
+                prompt + f"Besedilo: {context.replace(asw, '<ans>' + asw + '</ans>')}\nOdgovor: {asw}\nVprašanje:"
+                for asw, context in to_do_exs
+            ]
         else:
             formated_inputs = [f'{str_prefix}{asw} {self.sep} {context}' for asw, context in to_do_exs]
         _, question_texts = model_QG.predict(formated_inputs)
+
+        if self.language == 'sl':
+            for i, q in enumerate(question_texts):
+                if '[END]' in q:
+                    question_texts[i] = q[:q.index('[END]')]  # strip after [END] if slovenian language
+                else:
+                    question_texts[i] = q  # keep as is
 
         return question_texts
 
@@ -692,10 +714,24 @@ class QuestEval:
         to_do_exs: List[tuple],
         type_logs: str
     ) -> Tuple[List[float], List[str]]:
+
         model_QA = self.models[type_logs]['QA']
-        formated_inputs = [f'{question} {self.sep} {context}' for question, context in to_do_exs]
+        if self.language == 'sl':
+            formated_inputs = [(
+                "Na podlagi podanega vprašanja in besedila generiraj samo en smiseln in pravilen odgovor, "
+                "ki izhaja izključno iz konteksta tega besedila. "
+                "Odgovor naj bo jasen, natančen in kratek (le nekaj besed). "
+                "Če na vprašanje ni mogoče odgovoriti na podlagi predloženega besedila, ne ustvarite nobenega besedila."
+                f"\n\nVprašanje: {q}\nBesedilo: {c}\nOdgovor:"
+            ) for q, c in to_do_exs]
+        else:
+            formated_inputs = [f'{question} {self.sep} {context}' for question, context in to_do_exs]
         qa_scores, qa_texts = model_QA.predict(formated_inputs)
 
+        if self.language == 'sl':
+            for i, a in enumerate(qa_texts):
+                if '[END]' in a:
+                    qa_texts[i] = a[:a.index('[END]')]
         return qa_scores, qa_texts
 
     def _predict_weighter(self, to_do_exs: List[str]) -> List[float]:
