@@ -10,4 +10,3 @@ spacy_udpipe
 setuptools
 torch
 numpy
-git+https://github.com/VukMNE/RQUGE.git
