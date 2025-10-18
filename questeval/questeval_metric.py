@@ -3,7 +3,7 @@ import os
 import json
 import numpy as np
 import logging
-from datasets import load_metric
+from evaluate import load as load_metric
 import spacy
 import spacy_udpipe
 import torch

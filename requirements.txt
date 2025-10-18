@@ -1,7 +1,7 @@
 pytest
 transformers>=4.36.0
 sentencepiece
-datasets
+evaluate
 bert_score
 Unidecode
 blis
