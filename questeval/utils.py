@@ -15,6 +15,10 @@ from transformers import (
 
 )
 
+ROLE_PREFIX_RE = re.compile(r"^\s*(model|assistant|asistent|assistantu|asistentu)?\s*[:\-]?\s*", re.IGNORECASE)
+END_TOK_RE     = re.compile(r"\[?\s*END\s*\]?", re.IGNORECASE)
+NO_ANS_TOKEN = "<no_answer>"
+
 def text2hash(string: str) -> str:
     hash_object = hashlib.sha512(string.encode('utf-8'))
     hex_dig = hash_object.hexdigest()
@@ -228,46 +232,145 @@ class API_OPT:
         return keep_score_idx_scores, gen_texts
 
 
+class API_SL:
+    def __init__(
+        self,
+        pretrained_model_name_or_path: str,
+        max_source_length: int,
+        model_batch_size: int,
+        device: str = "cuda"
+    ):
+        self.pretrained_model_name_or_path = pretrained_model_name_or_path
+        bnb_cfg = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type="nf4",
+        )
+        self.tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name_or_path, use_fast=True)
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.model = AutoModelForCausalLM.from_pretrained(
+            pretrained_model_name_or_path,
+            device_map="auto",
+            quantization_config=bnb_cfg,
+            attn_implementation="eager",
+        )
+        self.model.eval()
+        self.device = device
+        self.model_batch_size = model_batch_size
+        self.max_source_length = max_source_length
+
+    def predict(self, sources: List[str], task_type: str = "QG", max_new_tokens: int = 64) -> Tuple[List[float], List[str]]:
+        """
+        sources: List of prompts (already formatted for QG or QA)
+        task_type: "QG" or "QA"
+        Returns: (scores, texts) for QA; (None, texts) for QG
+        """
+        inputs = self.tokenizer(sources, return_tensors="pt", padding=True, truncation=True).to(self.model.device)
+        with torch.no_grad():
+            outputs = self.model.generate(
+                **inputs,
+                max_new_tokens=max_new_tokens,
+                do_sample=False,
+                temperature=1.0,
+                eos_token_id=self.tokenizer.convert_tokens_to_ids("[END]"),
+                top_p=1.0,
+                use_cache=True,
+                return_dict_in_generate=True,
+                output_scores=None,
+                pad_token_id=self.tokenizer.pad_token_id or self.tokenizer.eos_token_id,
+            )
+        prompt_len = inputs["input_ids"].shape[1]
+        texts = []
+        for i in range(outputs.sequences.shape[0]):
+            gen_ids = outputs.sequences[i, prompt_len:]
+            txt = self.tokenizer.decode(gen_ids, skip_special_tokens=True)
+            txt = txt.split("[END]")[0].strip()
+            texts.append(txt)
+
+        if task_type == "QA":
+            # Assign answerability: 1.0 if answer is non-empty, 0.0 if empty
+            scores = [1.0 if t.strip() else 0.0 for t in texts]
+            return scores, texts
+        else:
+            return None, texts
+        
+def clean_answer_text(s: str) -> str:
+    if "Odgovor:" in s:
+        s = s.split("Odgovor:")[-1]
+    s = END_TOK_RE.sub("", s)
+    s = ROLE_PREFIX_RE.sub("", s)
+    s = s.replace("\u200b", " ").replace("\r", " ").replace("\n", " ")
+    s = " ".join(s.split())
+    return s.strip()
+
+def normalize_answer_sl(s: str) -> str:
+    s = clean_answer_text(s).lower()
+    if NO_ANS_TOKEN in s.split():
+        return NO_ANS_TOKEN
+    table = str.maketrans({c: " " for c in ",.;:!?()[]{}\"'`"})
+    s = s.translate(table)
+    s = " ".join(s.split())
+    return s
+
+def get_tokens_sl(s: str):
+    if not s: return []
+    return normalize_answer_sl(s).split()
+
+
+
 def calculate_f1_squad(
     a_gold: str,
-    a_pred: str
+    a_pred: str,
+    language: str = "en"
 ) -> float:
-    def normalize_answer(s):
-        """Lower text and remove punctuation, articles and extra whitespace."""
-
-        def remove_articles(text):
-            regex = re.compile(r'\b(a|an|the)\b', re.UNICODE)
-            return re.sub(regex, ' ', text)
-
-        def white_space_fix(text):
-            return ' '.join(text.split())
-
-        def remove_punc(text):
-            exclude = set(string.punctuation)
-            return ''.join(ch for ch in text if ch not in exclude)
-
-        def lower(text):
-            return text.lower()
-
-        return white_space_fix(remove_articles(remove_punc(lower(s))))
-
-    def get_tokens(s):
-        if not s: return []
-        return normalize_answer(s).split()
-
-    gold_toks = get_tokens(a_gold)
-    pred_toks = get_tokens(a_pred)
-    common = collections.Counter(gold_toks) & collections.Counter(pred_toks)
-    num_same = sum(common.values())
-    if len(gold_toks) == 0 or len(pred_toks) == 0:
-        # If either is no-answer, then F1 is 1 if they agree, 0 otherwise
-        return int(gold_toks == pred_toks)
-    if num_same == 0:
-        return 0
-    precision = 1.0 * num_same / len(pred_toks)
-    recall = 1.0 * num_same / len(gold_toks)
-    f1 = (2 * precision * recall) / (precision + recall)
-    return f1
+    """
+    Calculates F1 for squad-style answers.
+    Uses Slovenian-specific normalization if language == 'sl'.
+    """
+    if language == "sl":
+        gold_toks = get_tokens_sl(a_gold)
+        pred_toks = get_tokens_sl(a_pred)
+        common = Counter(gold_toks) & Counter(pred_toks)
+        num_same = sum(common.values())
+        if len(gold_toks) == 0 or len(pred_toks) == 0:
+            return int(gold_toks == pred_toks)
+        if num_same == 0:
+            return 0
+        precision = 1.0 * num_same / len(pred_toks)
+        recall = 1.0 * num_same / len(gold_toks)
+        f1 = (2 * precision * recall) / (precision + recall)
+        return f1
+    else:
+        # ...existing English logic...
+        def normalize_answer(s):
+            def remove_articles(text):
+                regex = re.compile(r'\b(a|an|the)\b', re.UNICODE)
+                return re.sub(regex, ' ', text)
+            def white_space_fix(text):
+                return ' '.join(text.split())
+            def remove_punc(text):
+                exclude = set(string.punctuation)
+                return ''.join(ch for ch in text if ch not in exclude)
+            def lower(text):
+                return text.lower()
+            return white_space_fix(remove_articles(remove_punc(lower(s))))
+        def get_tokens(s):
+            if not s: return []
+            return normalize_answer(s).split()
+        gold_toks = get_tokens(a_gold)
+        pred_toks = get_tokens(a_pred)
+        common = collections.Counter(gold_toks) & collections.Counter(pred_toks)
+        num_same = sum(common.values())
+        if len(gold_toks) == 0 or len(pred_toks) == 0:
+            return int(gold_toks == pred_toks)
+        if num_same == 0:
+            return 0
+        precision = 1.0 * num_same / len(pred_toks)
+        recall = 1.0 * num_same / len(gold_toks)
+        f1 = (2 * precision * recall) / (precision + recall)
+        return f1
 
 
 def calculate_BERTScore(
@@ -275,13 +378,14 @@ def calculate_BERTScore(
     gold_references: List[str],
     metric_BERTScore,
     device: str,
+    bertscore_modelname: str = 'bert-base-multilingual-cased'
 ) -> List[float]:
 
     if len(model_predictions) == 0:
         return []
 
     metric_BERTScore.add_batch(predictions=model_predictions, references=gold_references)
-    final_score = metric_BERTScore.compute(model_type='bert-base-multilingual-cased', device=device)
+    final_score = metric_BERTScore.compute(model_type=bertscore_modelname, device=device)
 
     """
     # set all unanswerable scores to 0

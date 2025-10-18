@@ -11,6 +11,7 @@ from questeval import DIR, __version__
 from questeval.utils import (
     API_T2T,
     API_OPT,
+    API_SL,
     sentencize,
     calculate_f1_squad,
     calculate_BERTScore,
@@ -185,6 +186,15 @@ class QuestEval:
                 download('sl_core_news_sm')
                 self.spacy_pipeline = spacy.load('sl_core_news_sm')
 
+            if self.do_weighter:
+                from rquge_score import RQUGE
+                self.rquge_scorer = RQUGE(
+                    sp_scorer_path="VukDju/SloBERTA-SpanScorer-MOCHA",
+                    qa_model_path="VukDju/GaMS-9B-Instruct-QA-3ep",
+                    device=self.device,
+                    language="sl"
+                )
+
         if self.src_preproc_pipe is None:
             if task == 'data2text':
                 """
@@ -206,9 +216,9 @@ class QuestEval:
             models['hyp']['QA'] = f'{HF_ORGANIZATION}/t5-qa_squad2neg-en'
             models['hyp']['QG'] = f'{HF_ORGANIZATION}/t5-qg_squad1-en'
         elif self.language == 'sl':
-            # Use multilingual models as a fallback
-            models['hyp']['QA'] = "VukDju/GaMS-1B-QA"  # Replace with a better multilingual QA model
-            models['hyp']['QG'] = "VukDju/GaMS-1B-QG"  # Replace with multilingual QG model
+            # Use slovenian language models
+            models['hyp']['QA'] = "VukDju/GaMS-9B-Instruct-QA-3ep"  # Replace with a better multilingual QA model
+            models['hyp']['QG'] = "VukDju/GaMS-9B-Instruct-QG-Full-3ep"  # Replace with multilingual QG model
         else:
             raise("Evaluation for languages other than English or Slovenian is not handled yet.")
 
@@ -585,8 +595,11 @@ class QuestEval:
                     sim_scores = [calculate_f1_squad(pred_asw, gold_asw) for pred_asw, gold_asw in
                                   zip(to_do_pred_asws, to_do_gold_asws)]
                 elif type_score == 'bertscore':
+                    bertscore_model = 'bert-base-multilingual-cased' 
+                    if self.language == 'sl':
+                        bertscore_model = 'xlm-roberta-large'
                     sim_scores = calculate_BERTScore(to_do_pred_asws, to_do_gold_asws, self.metric_BERTScore,
-                                                     device=self.device)
+                                                     device=self.device, bertscore_modelname=bertscore_model)
                 else:
                     raise NotImplementedError(f"{type_score} not implemented")
 
@@ -683,29 +696,51 @@ class QuestEval:
         model_QG = self.models[type_logs]['QG']
 
         str_prefix = f'{self.qg_prefix} {self.sep} ' if self.qg_prefix is not None else ''
-        if self.language == 'sl':
-            prompt = (
-                'Na podlagi naslednjega besedila in podanega odgovora generiraj samo eno vprašanje, '
-                'na katerega je ta podani odgovor pravilen in smiseln izključno v kontekstu tega besedila. '
-                'Vprašanje naj bo oblikovano tako, da je prav podani odgovor (in ne katerikoli drug) edini pravilen odgovor. '
-                'Zaključi vprašanje z oznako [END].\n'
+        if self.language == "sl" and isinstance(model_QG, dict):
+            tokenizer = model_QG["tokenizer"]
+            model = model_QG["model"]
+
+            prompt_template = (
+                "Na podlagi naslednjega besedila in podanega odgovora generiraj samo eno vprašanje, "
+                "na katerega je ta podani odgovor pravilen in smiseln izključno v kontekstu tega besedila. "
+                "Vprašanje naj bo oblikovano tako, da je prav podani odgovor (in ne katerikoli drug) edini pravilen odgovor. "
+                "Zaključi vprašanje z oznako [END].\n"
             )
 
-            # Now create the actual inputs to predict — **each example extends the prompt**
-            formated_inputs = [
-                prompt + f"Besedilo: {context.replace(asw, '<ans>' + asw + '</ans>')}\nOdgovor: {asw}\nVprašanje:"
+            prompts = [
+                prompt_template + f"Besedilo: {context.replace(asw, '<ans>' + asw + '</ans>')}\nOdgovor: {asw}\nVprašanje:"
                 for asw, context in to_do_exs
             ]
+            # Use chat template if available
+            messages = [{"role": "user", "content": p} for p in prompts]
+            input_prompts = [tokenizer.apply_chat_template([m], tokenize=False, add_generation_prompt=True) for m in messages]
+
+            inputs = tokenizer(input_prompts, return_tensors="pt", padding=True).to(model.device)
+            with torch.no_grad():
+                outputs = model.generate(
+                    **inputs,
+                    max_new_tokens=64,
+                    do_sample=False,
+                    temperature=1.0,
+                    eos_token_id=tokenizer.convert_tokens_to_ids("[END]"),
+                    top_p=1.0,
+                    use_cache=True,
+                    return_dict_in_generate=True,
+                    output_scores=None,
+                    pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id,
+                )
+            prompt_len = inputs["input_ids"].shape[1]
+            questions = []
+            for i in range(outputs.sequences.shape[0]):
+                gen_ids = outputs.sequences[i, prompt_len:]
+                q_txt = tokenizer.decode(gen_ids, skip_special_tokens=True)
+                # Clean up question text
+                q_txt = q_txt.split("[END]")[0].strip()
+                questions.append(q_txt)
+            return questions
         else:
             formated_inputs = [f'{str_prefix}{asw} {self.sep} {context}' for asw, context in to_do_exs]
-        _, question_texts = model_QG.predict(formated_inputs)
-
-        if self.language == 'sl':
-            for i, q in enumerate(question_texts):
-                if '[END]' in q:
-                    question_texts[i] = q[:q.index('[END]')]  # strip after [END] if slovenian language
-                else:
-                    question_texts[i] = q  # keep as is
+            _, question_texts = model_QG.predict(formated_inputs)
 
         return question_texts
 
@@ -716,22 +751,54 @@ class QuestEval:
     ) -> Tuple[List[float], List[str]]:
 
         model_QA = self.models[type_logs]['QA']
-        if self.language == 'sl':
-            formated_inputs = [(
-                "Na podlagi podanega vprašanja in besedila generiraj samo en smiseln in pravilen odgovor, "
-                "ki izhaja izključno iz konteksta tega besedila. "
-                "Odgovor naj bo jasen, natančen in kratek (le nekaj besed). "
-                "Če na vprašanje ni mogoče odgovoriti na podlagi predloženega besedila, ne ustvarite nobenega besedila."
-                f"\n\nVprašanje: {q}\nBesedilo: {c}\nOdgovor:"
-            ) for q, c in to_do_exs]
+        if self.language == 'sl' and isinstance(model_QA, dict):
+            tokenizer = model_QA["tokenizer"]
+            model = model_QA["model"]
+
+            prompts = []
+            for q, c in to_do_exs:
+                p = (
+                    "Na podlagi podanega vprašanja in besedila generiraj samo en smiseln in pravilen odgovor, "
+                    "ki izhaja izključno iz konteksta tega besedila. "
+                    "Odgovor naj bo jasen, natančen in kratek (le nekaj besed). "
+                    "Če na vprašanje ni mogoče odgovoriti na podlagi predloženega besedila, ne ustvarite nobenega besedila."
+                    f"\n\nVprašanje: {q}\nBesedilo: {c}\nOdgovor:"
+                )
+                messages = [{"role": "user", "content": p}]
+                prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+                prompts.append(prompt)
+
+            inputs = tokenizer(prompts, return_tensors="pt", padding=True).to(model.device)
+            with torch.no_grad():
+                outputs = model.generate(
+                    **inputs,
+                    max_new_tokens=24,
+                    do_sample=False,
+                    temperature=1.0,
+                    eos_token_id=tokenizer.convert_tokens_to_ids("[END]"),
+                    top_p=1.0,
+                    use_cache=False,
+                    return_dict_in_generate=True,
+                    output_scores=None,
+                    pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id,
+                )
+            prompt_len = inputs["input_ids"].shape[1]
+            answers = []
+            for i in range(outputs.sequences.shape[0]):
+                gen_ids = outputs.sequences[i, prompt_len:]
+                a_txt = tokenizer.decode(gen_ids, skip_special_tokens=True)
+                # Clean up answer text
+                a_txt = a_txt.split("[END]")[0].strip()
+                answers.append(a_txt)
+
+            # Assign answerability: 1.0 if answer is non-empty, 0.0 if empty
+            qa_scores = [1.0 if a.strip() else 0.0 for a in answers]
+            return qa_scores, answers
         else:
             formated_inputs = [f'{question} {self.sep} {context}' for question, context in to_do_exs]
-        qa_scores, qa_texts = model_QA.predict(formated_inputs)
+            qa_scores, qa_texts = model_QA.predict(formated_inputs)
 
-        if self.language == 'sl':
-            for i, a in enumerate(qa_texts):
-                if '[END]' in a:
-                    qa_texts[i] = a[:a.index('[END]')]
+        
         return qa_scores, qa_texts
 
     def _predict_weighter(self, to_do_exs: List[str]) -> List[float]:
@@ -740,8 +807,33 @@ class QuestEval:
             probs = [1.0 for _ in to_do_exs]
 
         else:
-            probs, texts = self.models['Weighter'].predict(to_do_exs)
-            assert len(probs) == len(to_do_exs)
+            if self.language == "sl" and self.rquge_scorer is not None:
+                scores = []
+                import gc
+                for ex in to_do_exs:
+                    # ex format: "{answer} {self.sep} {question} {self.sep} {context}"
+                    try:
+                        parts = ex.split(self.sep)
+                        answer = parts[0].strip()
+                        question = parts[1].strip()
+                        context = parts[2].strip()
+                    except Exception:
+                        # fallback: treat whole ex as question, context unknown
+                        question = ex
+                        answer = ""
+                        context = ""
+                    score, _ = self.rquge_scorer.scorer(context=context, pred_question=question, gold_answer=answer, max_new_tokens=30)
+                    # Normalize RQUGE score from [1,5] to [0,1]
+                    norm_score = (score - 1) / 4.0
+                    scores.append(norm_score)
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                return scores
+            
+            else:
+                probs, texts = self.models['Weighter'].predict(to_do_exs)
+                assert len(probs) == len(to_do_exs)
 
         return probs
 
@@ -861,34 +953,16 @@ class QuestEval:
                 model_batch_size=model_batch_size,
                 device=self.device
             )
-        elif  "vukdju/gams-1b" in model_name.lower():
+        elif  "vukdju/gams" in model_name.lower() or self.language == "sl":
 
-            if "qa" in model_name.lower():
-                # 73 is the index for the token unanswerable in T5 vocabulary
-                keep_score_idx = 73
-            if 'weighter' in model_name.lower():
-                # 1176 is the index for the token true in T5 vocabulary
-                keep_score_idx = 1176
-            if model_name == f"{HF_ORGANIZATION}/t5-qg_squad1-en":
-                # the default models were trained with this prefix 'sv1' and 'nqa' prefix on the two datasets
-                self.qg_prefix = 'sv1'
-
-            # Handle GaMS-1B (OPT-based) for Slovene
-            # You may or may not need keep_score_idx for this model.
-            # If not needed, you can remove or leave it as None.
-
-            # Decide batch size logic if you have a separate QG vs classification scenario
+            # Use API_SL for Slovenian models
             model_batch_size = self.qg_batch_size if "qg" in model_name.lower() else self.clf_batch_size
-
-            # Replace API_OPT with whatever wrapper you implement for an OPT-like model
-            model = API_OPT(
+            model = API_SL(
                 pretrained_model_name_or_path=model_name,
-                keep_score_idx=keep_score_idx,
                 max_source_length=512,
                 model_batch_size=model_batch_size,
                 device=self.device
             )
-            return model
 
         else:
             raise NotImplementedError(f'Model Name Not Handled: the model name should contain t5 ({model_name}).')

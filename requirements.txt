@@ -10,3 +10,4 @@ spacy_udpipe==1.0.0
 setuptools~=75.8.0
 torch==2.2.1
 numpy==1.26.3
+rquge
