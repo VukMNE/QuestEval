@@ -11,7 +11,8 @@ from transformers import (
     T5Tokenizer,
     AutoTokenizer,
     AutoModelForCausalLM,
-    pipeline
+    pipeline,
+    BitsAndBytesConfig  # <-- Add this line
 
 )
 
