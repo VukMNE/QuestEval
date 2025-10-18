@@ -262,7 +262,7 @@ class API_SL:
         self.model_batch_size = model_batch_size
         self.max_source_length = max_source_length
 
-    def predict(self, sources: List[str], task_type: str = "QG", max_new_tokens: int = 64) -> Tuple[List[float], List[str]]:
+    def predict(self, sources: List[str], task_type: str = "QA", max_new_tokens: int = 64) -> Tuple[List[float], List[str]]:
         """
         sources: List of prompts (already formatted for QG or QA)
         task_type: "QG" or "QA"
