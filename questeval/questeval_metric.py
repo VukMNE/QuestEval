@@ -537,6 +537,14 @@ class QuestEval:
             answerability_scores, qa_texts = self._predict_answers(to_do_exs, type_logs_1)
             # print('#### QA answers: ')
             # print(qa_texts)
+            print("to_do_exs:")
+            print(to_do_exs)
+            print("QA_texts:")
+            print(qa_texts)
+            print("to_do_gold_asws:")
+            print(to_do_gold_asws)
+            print("Answerability_scores:")
+            print(answerability_scores)
             assert len(to_do_exs) == len(qa_texts) == len(to_do_gold_asws) == len(answerability_scores)
             for i in range(len(to_do_exs)):
 
