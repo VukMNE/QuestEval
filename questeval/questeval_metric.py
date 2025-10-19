@@ -16,7 +16,8 @@ from questeval.utils import (
     calculate_f1_squad,
     calculate_BERTScore,
     extract_table_answers,
-    text2hash
+    text2hash,
+    normalize_answer_sl
 )
 from questeval.few_shot.few_shot_qg import build_few_shot_prompt_examples
 
@@ -760,6 +761,7 @@ class QuestEval:
 
         model_QA = self.models[type_logs]['QA']
         if self.language == 'sl' and isinstance(model_QA, dict):
+            print('Slovenian QA model loaded')
             tokenizer = model_QA["tokenizer"]
             model = model_QA["model"]
 
@@ -775,7 +777,8 @@ class QuestEval:
                 messages = [{"role": "user", "content": p}]
                 prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
                 prompts.append(prompt)
-
+            print("Prompts for QA:")
+            print(prompts)
             inputs = tokenizer(prompts, return_tensors="pt", padding=True).to(model.device)
             with torch.no_grad():
                 outputs = model.generate(
@@ -793,16 +796,17 @@ class QuestEval:
             prompt_len = inputs["input_ids"].shape[1]
             answers = []
             for i in range(outputs.sequences.shape[0]):
-                gen_ids = outputs.sequences[i, prompt_len:]
+                gen_ids = outputs.sequences[i]
                 a_txt = tokenizer.decode(gen_ids, skip_special_tokens=True)
                 # Clean up answer text
-                a_txt = a_txt.split("[END]")[0].strip()
+                a_txt = normalize_answer_sl(a_txt)
                 answers.append(a_txt)
 
             # Assign answerability: 1.0 if answer is non-empty, 0.0 if empty
             qa_scores = [1.0 if a.strip() else 0.0 for a in answers]
             return qa_scores, answers
         else:
+            print('Slovenian QA model NOT loaded! I repeat NOT loaded!')
             formated_inputs = [f'{question} {self.sep} {context}' for question, context in to_do_exs]
             qa_scores, qa_texts = model_QA.predict(formated_inputs)
 
