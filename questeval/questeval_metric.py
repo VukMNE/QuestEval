@@ -806,9 +806,18 @@ class QuestEval:
                         question = ex
                         answer = ""
                         context = ""
+                    print("Weighter EX:")
+                    print(ex)
+                    print("Parsed context:")
+                    print(context)
+                    print("Parsed question:")
+                    print(question)
+                    print("Parsed answer:")
+                    print(answer)
                     score, _ = self.rquge_scorer.scorer(context=context, pred_question=question, gold_answer=answer, max_new_tokens=30)
                     # Normalize RQUGE score from [1,5] to [0,1]
                     norm_score = (score - 1) / 4.0
+                    print("RQUGE score:", score, "Normalized score:", norm_score)
                     scores.append(norm_score)
                 gc.collect()
                 if torch.cuda.is_available():
