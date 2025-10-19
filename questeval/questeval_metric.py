@@ -27,7 +27,7 @@ from collections import Counter
 
 
 HF_ORGANIZATION = "ThomasNLG"
-CHUNK_SIZE_IN_CHARS_SLO = 1024
+CHUNK_SIZE_IN_CHARS_SLO = 512
 
 def load_spacy_model(language):
     if language == "sl":
@@ -192,7 +192,7 @@ class QuestEval:
                 from spacy.cli import download
                 download('sl_core_news_sm')
                 self.spacy_pipeline = spacy.load('sl_core_news_sm')
-                self.chunk_scorer = LargeDocumentChunkScorer(CHUNK_SIZE_IN_CHARS_SLO)
+                self.chunk_scorer = LargeDocumentChunkScorer(350)
 
             if self.do_weighter:
                 from rquge_score import RQUGE
@@ -725,11 +725,12 @@ class QuestEval:
         # preprocess contexts if too long
         processed_exs = []
         for asw, context in to_do_exs:
-            if len(context) > 1024:
-                context = extract_entity_window(context, asw, window_size=1024)
+            if len(context) > CHUNK_SIZE_IN_CHARS_SLO and self.language == "sl":
+                print("Context too long, applying windowing for SL question generation.")
+                context = extract_entity_window(context, asw, window_size=512)
             processed_exs.append((asw, context))
 
-        if self.language == "sl" and isinstance(model_QG, dict):
+        if self.language == "sl" and isinstance(model_QG, API_SL):
             tokenizer = model_QG["tokenizer"]
             model = model_QG["model"]
 
