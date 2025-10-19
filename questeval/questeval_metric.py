@@ -789,9 +789,11 @@ class QuestEval:
         if self.models['Weighter'] is None:
             # Neutral Policy
             probs = [1.0 for _ in to_do_exs]
+            print("Weighter not loaded, using neutral policy (all scores = 1.0)")
 
         else:
             if self.language == "sl" and self.rquge_scorer is not None:
+                print("Slovenian Weighter using RQUGE scorer")
                 scores = []
                 import gc
                 for ex in to_do_exs:
@@ -825,6 +827,7 @@ class QuestEval:
                 return scores
             
             else:
+                print("English Weighter using T5 model")
                 probs, texts = self.models['Weighter'].predict(to_do_exs)
                 assert len(probs) == len(to_do_exs)
 
