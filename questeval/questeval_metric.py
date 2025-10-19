@@ -315,8 +315,17 @@ class QuestEval:
         if sources is not None:
             src_logs, src_hashes, modified_logs = self._texts2logs(sources, type_logs='src', d_loaded_logs=d_loaded_logs)
             # Asking the questions on the compared text
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
             modified_logs = max(self._compute_question_answering(src_logs, hyp_logs, 'src', 'hyp'), modified_logs)
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
             modified_logs = max(self._compute_question_answering(hyp_logs, src_logs, 'hyp', 'src'), modified_logs)
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
             # Compute the similarity scores
             modified_logs = max(self._compute_answer_similarity_scores(src_logs, type_logs='src'), modified_logs)
             # Serialise logs
