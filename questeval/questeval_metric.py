@@ -760,11 +760,9 @@ class QuestEval:
     ) -> Tuple[List[float], List[str]]:
 
         model_QA = self.models[type_logs]['QA']
-        if self.language == 'sl' and isinstance(model_QA, dict):
+        if self.language == 'sl' and isinstance(model_QA, API_SL):
             print('Slovenian QA model loaded')
-            tokenizer = model_QA["tokenizer"]
-            model = model_QA["model"]
-
+            # Use API_SL's predict method
             prompts = []
             for q, c in to_do_exs:
                 p = (
@@ -775,42 +773,16 @@ class QuestEval:
                     f"\n\nVprašanje: {q}\nBesedilo: {c}\nOdgovor:"
                 )
                 messages = [{"role": "user", "content": p}]
-                prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+                prompt = model_QA.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
                 prompts.append(prompt)
-            print("Prompts for QA:")
-            print(prompts)
-            inputs = tokenizer(prompts, return_tensors="pt", padding=True).to(model.device)
-            with torch.no_grad():
-                outputs = model.generate(
-                    **inputs,
-                    max_new_tokens=24,
-                    do_sample=False,
-                    temperature=1.0,
-                    eos_token_id=tokenizer.convert_tokens_to_ids("[END]"),
-                    top_p=1.0,
-                    use_cache=False,
-                    return_dict_in_generate=True,
-                    output_scores=None,
-                    pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id,
-                )
-            prompt_len = inputs["input_ids"].shape[1]
-            answers = []
-            for i in range(outputs.sequences.shape[0]):
-                gen_ids = outputs.sequences[i]
-                a_txt = tokenizer.decode(gen_ids, skip_special_tokens=True)
-                # Clean up answer text
-                a_txt = normalize_answer_sl(a_txt)
-                answers.append(a_txt)
-
-            # Assign answerability: 1.0 if answer is non-empty, 0.0 if empty
-            qa_scores = [1.0 if a.strip() else 0.0 for a in answers]
+            qa_scores, answers = model_QA.predict(prompts, task_type="QA", max_new_tokens=24)
+            answers = [normalize_answer_sl(a) for a in answers]
             return qa_scores, answers
         else:
             print('Slovenian QA model NOT loaded! I repeat NOT loaded!')
             formated_inputs = [f'{question} {self.sep} {context}' for question, context in to_do_exs]
             qa_scores, qa_texts = model_QA.predict(formated_inputs)
 
-        
         return qa_scores, qa_texts
 
     def _predict_weighter(self, to_do_exs: List[str]) -> List[float]:
