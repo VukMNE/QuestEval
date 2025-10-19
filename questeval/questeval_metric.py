@@ -17,13 +17,17 @@ from questeval.utils import (
     calculate_BERTScore,
     extract_table_answers,
     text2hash,
-    normalize_answer_sl
+    normalize_answer_sl,
+    extract_entity_window
 )
 from questeval.few_shot.few_shot_qg import build_few_shot_prompt_examples
 import gc
+from chunker.large_document_chunk_scorer import LargeDocumentChunkScorer
+from collections import Counter
 
 
 HF_ORGANIZATION = "ThomasNLG"
+CHUNK_SIZE_IN_CHARS_SLO = 1024
 
 def load_spacy_model(language):
     if language == "sl":
@@ -188,6 +192,7 @@ class QuestEval:
                 from spacy.cli import download
                 download('sl_core_news_sm')
                 self.spacy_pipeline = spacy.load('sl_core_news_sm')
+                self.chunk_scorer = LargeDocumentChunkScorer(CHUNK_SIZE_IN_CHARS_SLO)
 
             if self.do_weighter:
                 from rquge_score import RQUGE
@@ -315,17 +320,8 @@ class QuestEval:
         if sources is not None:
             src_logs, src_hashes, modified_logs = self._texts2logs(sources, type_logs='src', d_loaded_logs=d_loaded_logs)
             # Asking the questions on the compared text
-            gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
             modified_logs = max(self._compute_question_answering(src_logs, hyp_logs, 'src', 'hyp'), modified_logs)
-            gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
             modified_logs = max(self._compute_question_answering(hyp_logs, src_logs, 'hyp', 'src'), modified_logs)
-            gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
             # Compute the similarity scores
             modified_logs = max(self._compute_answer_similarity_scores(src_logs, type_logs='src'), modified_logs)
             # Serialise logs
@@ -725,6 +721,14 @@ class QuestEval:
         model_QG = self.models[type_logs]['QG']
 
         str_prefix = f'{self.qg_prefix} {self.sep} ' if self.qg_prefix is not None else ''
+
+        # preprocess contexts if too long
+        processed_exs = []
+        for asw, context in to_do_exs:
+            if len(context) > 1024:
+                context = extract_entity_window(context, asw, window_size=1024)
+            processed_exs.append((asw, context))
+
         if self.language == "sl" and isinstance(model_QG, dict):
             tokenizer = model_QG["tokenizer"]
             model = model_QG["model"]
@@ -738,7 +742,7 @@ class QuestEval:
 
             prompts = [
                 prompt_template + f"Besedilo: {context.replace(asw, '<ans>' + asw + '</ans>')}\nOdgovor: {asw}\nVprašanje:"
-                for asw, context in to_do_exs
+                for asw, context in processed_exs
             ]
             # Use chat template if available
             messages = [{"role": "user", "content": p} for p in prompts]
@@ -781,20 +785,78 @@ class QuestEval:
 
         model_QA = self.models[type_logs]['QA']
         if self.language == 'sl' and isinstance(model_QA, API_SL):
-            print('Slovenian QA model loaded')
+            print('Slovenian QA model loaded (with chunking)')
             # Use API_SL's predict method
-            prompts = []
+            answers = []
+            qa_scores = []
+            bertscore_threshold = 0.85
+            top_n = 3
             for q, c in to_do_exs:
-                p = (
-                    "Na podlagi podanega vprašanja in besedila generiraj samo en smiseln in pravilen odgovor, "
-                    "ki izhaja izključno iz konteksta tega besedila. "
-                    "Odgovor naj bo jasen, natančen in kratek (le nekaj besed). "
-                    "Če na vprašanje ni mogoče odgovoriti na podlagi predloženega besedila, ne ustvarite nobenega besedila."
-                    f"\n\nVprašanje: {q}\nBesedilo: {c}\nOdgovor:"
-                )
-                messages = [{"role": "user", "content": p}]
-                prompt = model_QA.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-                prompts.append(prompt)
+                if len(c) <= CHUNK_SIZE_IN_CHARS_SLO:
+                    p = (
+                        "Na podlagi podanega vprašanja in besedila generiraj samo en smiseln in pravilen odgovor, "
+                        "ki izhaja izključno iz konteksta tega besedila. "
+                        "Odgovor naj bo jasen, natančen in kratek (le nekaj besed). "
+                        "Če na vprašanje ni mogoče odgovoriti na podlagi predloženega besedila, ne ustvarite nobenega besedila."
+                        f"\n\nVprašanje: {q}\nBesedilo: {c}\nOdgovor:"
+                    )
+                    messages = [{"role": "user", "content": p}]
+                    prompt = model_QA.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+                    _, chunk_answers = model_QA.predict([prompt_str], task_type="QA", max_new_tokens=24)
+                    answer = normalize_answer_sl(chunk_answers[0])
+                    answers.append(answer)
+                    qa_scores.append(1.0 if answer.strip() else 0.0)
+                else:
+                    # Chunk the context and select top N chunks by BertScore
+                    top_chunks = self.chunk_scorer.top_n_chunks(question=q, text=c, n=top_n)
+                    filtered_chunks = [chunk for chunk in top_chunks if chunk["f1"] > bertscore_threshold]
+                    if not filtered_chunks:
+                        answers.append("")
+                        qa_scores.append(0.0)
+                        continue
+
+                    chunk_answers = []
+                    for chunk in filtered_chunks:
+                        prompt = (
+                            "Na podlagi podanega vprašanja in besedila generiraj samo en smiseln in pravilen odgovor, "
+                            "ki izhaja izključno iz konteksta tega besedila. "
+                            "Odgovor naj bo jasen, natančen in kratek (le nekaj besed). "
+                            "Če na vprašanje ni mogoče odgovoriti na podlagi predloženega besedila, ne ustvarite nobenega besedila."
+                            f"\n\nVprašanje: {q}\nBesedilo: {chunk['chunk']}\nOdgovor:"
+                        )
+                        messages = [{"role": "user", "content": prompt}]
+                        prompt_str = model_QA.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+                        _, chunk_ans = model_QA.predict([prompt_str], task_type="QA", max_new_tokens=24)
+                        answer = normalize_answer_sl(chunk_ans[0])
+                        chunk_answers.append((answer, chunk["f1"]))
+
+                    # Find modal answer
+                    answer_counts = Counter([a for a, _ in chunk_answers if a.strip()])
+                    if not answer_counts:
+                        answers.append("")
+                        qa_scores.append(0.0)
+                        continue
+
+                    most_common = answer_counts.most_common()
+                    max_count = most_common[0][1]
+                    candidates = [ans for ans, cnt in most_common if cnt == max_count]
+
+                    if len(candidates) == 1:
+                        final_answer = candidates[0]
+                    else:
+                        # Tie: pick answer from chunk with highest BertScore
+                        best = None
+                        best_score = -1
+                        for (ans, score) in chunk_answers:
+                            if ans in candidates and score > best_score:
+                                best = ans
+                                best_score = score
+                        final_answer = best
+
+                    answers.append(final_answer)
+                    qa_scores.append(1.0 if final_answer.strip() else 0.0)
+
+            return qa_scores, answers
             qa_scores, answers = model_QA.predict(prompts, task_type="QA", max_new_tokens=24)
             answers = [normalize_answer_sl(a) for a in answers]
             return qa_scores, answers

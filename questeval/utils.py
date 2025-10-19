@@ -319,6 +319,20 @@ def get_tokens_sl(s: str):
     if not s: return []
     return normalize_answer_sl(s).split()
 
+def extract_entity_window(text: str, entity: str, window_size:1024=1024) -> str:
+    """
+    Extract a window of up to window_size chars from text, centered on the first occurrence of entity.
+    If entity is not found, returns the first window_size chars.
+    """
+    idx = text.lower().find(entity.lower())
+    if idx == -1:
+        return text[:window_size]
+    start = max(0, idx - (window_size // 2))
+    end = min(len(text), start + window_size)
+    # Adjust start if we're at the end
+    start = max(0, end - window_size)
+    return text[start:end]
+
 
 
 def calculate_f1_squad(
