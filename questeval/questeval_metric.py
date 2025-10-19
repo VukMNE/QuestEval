@@ -20,6 +20,8 @@ from questeval.utils import (
     normalize_answer_sl
 )
 from questeval.few_shot.few_shot_qg import build_few_shot_prompt_examples
+import gc
+
 
 HF_ORGANIZATION = "ThomasNLG"
 
@@ -486,6 +488,9 @@ class QuestEval:
 
         if len(to_do_exs) != 0:
             question_texts = self._predict_questions(to_do_exs, type_logs)
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
             for i in range(len(question_texts)):
                 idx = to_do_exs_idxs[i]
                 answer_type = to_do_exs_types[i]
@@ -536,6 +541,9 @@ class QuestEval:
 
         if len(to_do_exs) != 0:
             answerability_scores, qa_texts = self._predict_answers(to_do_exs, type_logs_1)
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
             # print('#### QA answers: ')
             # print(qa_texts)
             print("to_do_exs:")
@@ -652,6 +660,9 @@ class QuestEval:
 
         if len(to_do_exs) != 0:
             weighter_scores = self._predict_weighter(to_do_exs)
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
             assert len(to_do_exs) == len(weighter_scores)
             for i in range(len(to_do_exs)):
                 idx = to_do_exs_idxs[i]
@@ -795,7 +806,6 @@ class QuestEval:
             if self.language == "sl" and self.rquge_scorer is not None:
                 print("Slovenian Weighter using RQUGE scorer")
                 scores = []
-                import gc
                 for ex in to_do_exs:
                     # ex format: "{answer} {self.sep} {question} {self.sep} {context}"
                     try:
