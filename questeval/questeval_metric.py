@@ -726,14 +726,14 @@ class QuestEval:
         processed_exs = []
         for asw, context in to_do_exs:
             if len(context) > CHUNK_SIZE_IN_CHARS_SLO and self.language == "sl":
-                print("Context too long, applying windowing for SL question generation.")
+                #print("Context too long, applying windowing for SL question generation.")
                 context = extract_entity_window(context, asw, window_size=512)
             processed_exs.append((asw, context))
 
         if self.language == "sl" and isinstance(model_QG, API_SL):
             print('Slovenian QG model loaded')
-            tokenizer = model_QG["tokenizer"]
-            model = model_QG["model"]
+            tokenizer = model_QG.tokenizer
+            model = model_QG.model
 
             prompt_template = (
                 "Na podlagi naslednjega besedila in podanega odgovora generiraj samo eno vprašanje, "
