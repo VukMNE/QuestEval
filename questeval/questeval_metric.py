@@ -22,7 +22,7 @@ from questeval.utils import (
 )
 from questeval.few_shot.few_shot_qg import build_few_shot_prompt_examples
 import gc
-from ..chunker.large_document_chunk_scorer import LargeDocumentChunkScorer
+from chunker.large_document_chunk_scorer import LargeDocumentChunkScorer
 from collections import Counter
 
 
