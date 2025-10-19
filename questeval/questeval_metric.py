@@ -731,6 +731,7 @@ class QuestEval:
             processed_exs.append((asw, context))
 
         if self.language == "sl" and isinstance(model_QG, API_SL):
+            print('Slovenian QG model loaded')
             tokenizer = model_QG["tokenizer"]
             model = model_QG["model"]
 
