@@ -192,7 +192,9 @@ class QuestEval:
                 from spacy.cli import download
                 download('sl_core_news_sm')
                 self.spacy_pipeline = spacy.load('sl_core_news_sm')
-                self.chunk_scorer = LargeDocumentChunkScorer(350)
+
+
+            self.chunk_scorer = LargeDocumentChunkScorer(350)
 
             if self.do_weighter:
                 from rquge_score import RQUGE
@@ -891,10 +893,10 @@ class QuestEval:
                         question = ex
                         answer = ""
                         context = ""
-                    print("Weighter EX:")
-                    print(ex)
-                    print("Parsed context:")
-                    print(context)
+                    # print("Weighter EX:")
+                    # print(ex)
+                    # print("Parsed context:")
+                    # print(context)
                     print("Parsed question:")
                     print(question)
                     print("Parsed answer:")
