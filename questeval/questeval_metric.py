@@ -851,7 +851,7 @@ class QuestEval:
                     )
                     messages = [{"role": "user", "content": p}]
                     prompt = model_QA.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-                    _, chunk_answers = model_QA.predict([prompt_str], task_type="QA", max_new_tokens=24)
+                    _, chunk_answers = model_QA.predict([prompt], task_type="QA", max_new_tokens=24)
                     answer = normalize_answer_sl(chunk_answers[0])
                     answers.append(answer)
                     qa_scores.append(1.0 if answer.strip() else 0.0)
