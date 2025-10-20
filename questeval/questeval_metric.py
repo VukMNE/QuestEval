@@ -681,11 +681,47 @@ class QuestEval:
     def _get_answer_types(self, type_logs: str) -> str:
         return ('TABLE', ) if type_logs == 'src' and self.task == 'data2text' else self.answer_types
 
+    # def _predict_self_answers(
+    #     self,
+    #     texts: List,
+    #     answer_type: str
+    # ) -> List[str]:
+    #     if self.limit_sent is not None:
+    #         list_sentences = [sentencize(text, self.spacy_pipeline) for text in texts]
+    #         texts = [' '.join(sentences[:self.limit_sent]) for sentences in list_sentences]
+
+    #     if self.language == "en":
+    #         list_answers = []
+    #         if answer_type == 'NER':
+    #             list_answers = [[a.text for a in self.spacy_pipeline(text).ents] for text in texts]
+    #         elif answer_type == 'NOUN':
+    #             list_answers = [[a.text for a in self.spacy_pipeline(text).noun_chunks] for text in texts]
+    #         elif answer_type == 'SPANER':
+    #             pass  # todo not implemented
+    #         elif answer_type == 'TABLE':
+    #             list_answers = [extract_table_answers(text) for text in texts]
+
+    #         return list_answers
+    #     elif self.language == "sl":
+    #         list_answers = []
+    #         if answer_type == 'NER':
+    #             list_answers = [[a for a in get_named_entities(self.spacy_pipeline(text))] for text in texts]
+    #         elif answer_type == 'NOUN':
+    #             list_answers = [[a for a in get_noun_chunks(self.spacy_pipeline(text))] for text in texts]
+    #         elif answer_type == 'SPANER':
+    #             pass  # todo not implemented
+    #         elif answer_type == 'TABLE':
+    #             list_answers = [extract_table_answers(text) for text in texts]
+
+    #         return list_answers
+        
     def _predict_self_answers(
         self,
         texts: List,
         answer_type: str
     ) -> List[str]:
+        max_entities = 10  # or make this configurable
+
         if self.limit_sent is not None:
             list_sentences = [sentencize(text, self.spacy_pipeline) for text in texts]
             texts = [' '.join(sentences[:self.limit_sent]) for sentences in list_sentences]
@@ -705,9 +741,18 @@ class QuestEval:
         elif self.language == "sl":
             list_answers = []
             if answer_type == 'NER':
-                list_answers = [[a for a in get_named_entities(self.spacy_pipeline(text))] for text in texts]
+                for text in texts:
+                    entities = [a for a in get_named_entities(self.spacy_pipeline(text))]
+                    # Rank by frequency
+                    freq = Counter(entities)
+                    top_entities = [e for e, _ in freq.most_common(max_entities)]
+                    list_answers.append(top_entities)
             elif answer_type == 'NOUN':
-                list_answers = [[a for a in get_noun_chunks(self.spacy_pipeline(text))] for text in texts]
+                for text in texts:
+                    nouns = [a for a in get_noun_chunks(self.spacy_pipeline(text))]
+                    freq = Counter(nouns)
+                    top_nouns = [n for n, _ in freq.most_common(max_entities)]
+                    list_answers.append(top_nouns)
             elif answer_type == 'SPANER':
                 pass  # todo not implemented
             elif answer_type == 'TABLE':
