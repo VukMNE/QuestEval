@@ -950,7 +950,7 @@ class QuestEval:
                     # Normalize RQUGE score from [1,5] to [0,1]
                     norm_score = (score - 1) / 4.0
                     print("RQUGE score:", score, "Normalized score:", norm_score)
-                    scores.append(score)
+                    scores.append(norm_score)
                 gc.collect()
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
