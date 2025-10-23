@@ -294,11 +294,10 @@ class API_SL:
 
             # Computes answerability as 1 - P(<no_answer>) for first generated token
             if task_type == "QA" and outputs.scores:
-                eos_token_id = self.tokenizer.convert_tokens_to_ids("<eos>")
-                first_token_scores = outputs.scores[0][i]
-                first_token_probs = first_token_scores.softmax(dim=-1)
+                sc_token_scores = outputs.scores[1][i]
+                sc_token_probs = sc_token_scores.softmax(dim=-1)
 
-                max_prob, max_token_id = torch.max(first_token_probs, dim=-1)
+                max_prob, max_token_id = torch.max(sc_token_probs, dim=-1)
                 max_token_str = self.tokenizer.decode([max_token_id.item()])
 
                 print(f"First token max probability: {max_prob.item():.6f} | Token: '{max_token_str}' (id: {max_token_id.item()})")
@@ -306,9 +305,9 @@ class API_SL:
                 print(f"Decoded tokens: {[self.tokenizer.decode([tid]) for tid in gen_ids.tolist()]}")
                 print(f"Raw decoded output: '{self.tokenizer.decode(gen_ids)}'")
                 print(f"Final cleaned output: '{txt}'")
-                if eos_token_id is not None:
-                    p_eos = first_token_probs[eos_token_id].item()
-                    answerability = 1.0 - p_eos
+                if no_ans_token_id is not None:
+                    p_no_ans = sc_token_probs[no_ans_token_id].item()
+                    answerability = 1.0 - p_no_ans
                 else:
                     answerability = 1.0 if txt.strip() else 0.0
                 answerability_scores.append(answerability)
