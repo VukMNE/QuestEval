@@ -294,11 +294,13 @@ class API_SL:
 
             # Computes answerability as 1 - P(<no_answer>) for first generated token
             if task_type == "QA" and outputs.scores:
+                eos_token_id = self.tokenizer.convert_tokens_to_ids("[END]")
                 first_token_scores = outputs.scores[0][i]
                 first_token_probs = first_token_scores.softmax(dim=-1)
-                if no_ans_token_id is not None:
-                    p_no_ans = first_token_probs[no_ans_token_id].item()
-                    answerability = 1.0 - p_no_ans
+
+                if eos_token_id is not None:
+                    p_eos = first_token_probs[eos_token_id].item()
+                    answerability = 1.0 - p_eos
                 else:
                     answerability = 1.0 if txt.strip() else 0.0
                 answerability_scores.append(answerability)
