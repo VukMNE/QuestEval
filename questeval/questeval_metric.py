@@ -827,15 +827,14 @@ class QuestEval:
         return question_texts
 
     def _predict_answers(
-        self,
-        to_do_exs: List[tuple],
-        type_logs: str
-    ) -> Tuple[List[float], List[str]]:
+    self,
+    to_do_exs: List[tuple],
+    type_logs: str
+) -> Tuple[List[float], List[str]]:
 
         model_QA = self.models[type_logs]['QA']
         if self.language == 'sl' and isinstance(model_QA, API_SL):
             print('Slovenian QA model loaded (with chunking)')
-            # Use API_SL's predict method
             answers = []
             qa_scores = []
             bertscore_threshold = 0.85
@@ -851,10 +850,10 @@ class QuestEval:
                     )
                     messages = [{"role": "user", "content": p}]
                     prompt = model_QA.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-                    _, chunk_answers = model_QA.predict([prompt], task_type="QA", max_new_tokens=24)
+                    answerability_score, chunk_answers = model_QA.predict([prompt], task_type="QA", max_new_tokens=24)
                     answer = normalize_answer_sl(chunk_answers[0])
                     answers.append(answer)
-                    qa_scores.append(1.0 if answer.strip() else 0.0)
+                    qa_scores.append(answerability_score[0])  # <-- Use model's answerability
                 else:
                     # Chunk the context and select top N chunks by BertScore
                     top_chunks = self.chunk_scorer.top_n_chunks(question=q, text=c, n=top_n)
@@ -865,6 +864,7 @@ class QuestEval:
                         continue
 
                     chunk_answers = []
+                    chunk_answerabilities = []
                     for chunk in filtered_chunks:
                         prompt = (
                             "Na podlagi podanega vprašanja in besedila generiraj samo en smiseln in pravilen odgovor, "
@@ -875,9 +875,10 @@ class QuestEval:
                         )
                         messages = [{"role": "user", "content": prompt}]
                         prompt_str = model_QA.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-                        _, chunk_ans = model_QA.predict([prompt_str], task_type="QA", max_new_tokens=24)
+                        answerability_score, chunk_ans = model_QA.predict([prompt_str], task_type="QA", max_new_tokens=24)
                         answer = normalize_answer_sl(chunk_ans[0])
                         chunk_answers.append((answer, chunk["f1"]))
+                        chunk_answerabilities.append(answerability_score[0])
 
                     # Find modal answer
                     answer_counts = Counter([a for a, _ in chunk_answers if a.strip()])
@@ -892,22 +893,25 @@ class QuestEval:
 
                     if len(candidates) == 1:
                         final_answer = candidates[0]
+                        # Use answerability of the first occurrence of this answer
+                        idx = [i for i, (ans, _) in enumerate(chunk_answers) if ans == final_answer][0]
+                        final_answerability = chunk_answerabilities[idx]
                     else:
                         # Tie: pick answer from chunk with highest BertScore
                         best = None
                         best_score = -1
-                        for (ans, score) in chunk_answers:
+                        best_idx = 0
+                        for i, (ans, score) in enumerate(chunk_answers):
                             if ans in candidates and score > best_score:
                                 best = ans
                                 best_score = score
+                                best_idx = i
                         final_answer = best
+                        final_answerability = chunk_answerabilities[best_idx]
 
                     answers.append(final_answer)
-                    qa_scores.append(1.0 if final_answer.strip() else 0.0)
+                    qa_scores.append(final_answerability)
 
-            return qa_scores, answers
-            qa_scores, answers = model_QA.predict(prompts, task_type="QA", max_new_tokens=24)
-            answers = [normalize_answer_sl(a) for a in answers]
             return qa_scores, answers
         else:
             print('Slovenian QA model NOT loaded! I repeat NOT loaded!')
@@ -915,6 +919,7 @@ class QuestEval:
             qa_scores, qa_texts = model_QA.predict(formated_inputs)
 
         return qa_scores, qa_texts
+
 
     def _predict_weighter(self, to_do_exs: List[str]) -> List[float]:
         if self.models['Weighter'] is None:
