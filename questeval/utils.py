@@ -279,21 +279,38 @@ class API_SL:
                 top_p=1.0,
                 use_cache=True,
                 return_dict_in_generate=True,
-                output_scores=None,
+                output_scores=True,
                 pad_token_id=self.tokenizer.pad_token_id or self.tokenizer.eos_token_id,
             )
         prompt_len = inputs["input_ids"].shape[1]
         texts = []
+        answerability_scores = []
+        no_ans_token_id = self.tokenizer.convert_tokens_to_ids(NO_ANS_TOKEN)
         for i in range(outputs.sequences.shape[0]):
             gen_ids = outputs.sequences[i, prompt_len:]
             txt = self.tokenizer.decode(gen_ids, skip_special_tokens=True)
             txt = txt.split("[END]")[0].strip()
             texts.append(txt)
 
+            # Computes answerability as 1 - P(<no_answer>) for first generated token
+            if task_type == "QA" and outputs.scores:
+                first_token_scores = outputs.scores[0][i]
+                first_token_probs = first_token_scores.softmax(dim=-1)
+                if no_ans_token_id is not None:
+                    p_no_ans = first_token_probs[no_ans_token_id].item()
+                    answerability = 1.0 - p_no_ans
+                else:
+                    answerability = 1.0 if txt.strip() else 0.0
+                answerability_scores.append(answerability)
+            else:
+                answerability_scores.append(1.0 if txt.strip() else 0.0)
+
+
+
         if task_type == "QA":
-            # Assign answerability: 1.0 if answer is non-empty, 0.0 if empty
-            scores = [1.0 if t.strip() else 0.0 for t in texts]
-            return scores, texts
+            print( f"Answerability scores:" )
+            print(answerability_scores)
+            return answerability_scores, texts
         else:
             return None, texts
         
