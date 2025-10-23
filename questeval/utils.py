@@ -312,6 +312,8 @@ class API_SL:
         if task_type == "QA":
             print( f"Answerability scores:" )
             print(answerability_scores)
+            print( f"Generated texts:" )
+            print(texts)
             return answerability_scores, texts
         else:
             return None, texts
