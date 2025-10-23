@@ -302,7 +302,7 @@ class API_SL:
                 max_token_str = self.tokenizer.decode([max_token_id.item()])
 
                 print(f"First token max probability: {max_prob.item():.6f} | Token: '{max_token_str}' (id: {max_token_id.item()})")
-
+                print(self.tokenizer.decode(gen_ids, skip_special_tokens=True))
                 if eos_token_id is not None:
                     p_eos = first_token_probs[eos_token_id].item()
                     answerability = 1.0 - p_eos
@@ -319,6 +319,7 @@ class API_SL:
             print(answerability_scores)
             print( f"Generated texts:" )
             print(texts)
+            print('------------------')
             return answerability_scores, texts
         else:
             return None, texts
